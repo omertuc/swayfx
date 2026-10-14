@@ -300,6 +300,13 @@ void workspace_destroy(struct sway_workspace *workspace) {
 	if (workspace->animation_state.animation.initialized) {
 		finish_animation(&workspace->animation_state.animation);
 	}
+
+	struct sway_output *output;
+	wl_list_for_each(output, &root->all_outputs, link) {
+		if (output->prev_active_workspace == workspace) {
+			output->prev_active_workspace = NULL;
+		}
+	}
 	free(workspace);
 }
 
