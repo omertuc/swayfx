@@ -2,6 +2,7 @@
 #define _SWAY_ANIMATION_MANAGER_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <wayland-util.h>
 
 struct sway_container;
@@ -11,6 +12,7 @@ struct sway_server;
 struct animation {
 	struct wl_list link;
 	float progress;
+	int64_t start_nsec;
 	void *data;
 	float multiplier;
 	bool initialized;
