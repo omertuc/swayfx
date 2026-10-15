@@ -37,7 +37,7 @@ static int64_t get_monotonic_nsec(void) {
 	return (int64_t)now.tv_sec * 1000000000 + now.tv_nsec;
 }
 
-static int animation_timer() {
+static void tick_animations(void) {
 	// Progress follows wall-clock time, so a slow frame skips ahead instead of
 	// stretching the animation past animation_duration_ms
 	int64_t now = get_monotonic_nsec();
@@ -59,12 +59,25 @@ static int animation_timer() {
 			}
 		}
 	}
+}
 
+static int animation_timer() {
+	tick_animations();
 	if (!wl_list_empty(&animation_manager.animations)) {
 		wl_event_source_timer_update(animation_manager.tick,
 				animation_manager.tick_time);
 	}
 	return 0;
+}
+
+void update_animations_for_frame(void) {
+	// The timer isn't aligned to vblank, so on its own each frame would show
+	// state that's 0..tick_time old, a different amount every frame (judder).
+	// Bring the animations up to date right before rendering instead; the
+	// timer keeps running so the scene keeps getting damaged and redrawn.
+	if (!wl_list_empty(&animation_manager.animations)) {
+		tick_animations();
+	}
 }
 
 void add_animation(struct animation *animation, void (*update_callback)(void *),

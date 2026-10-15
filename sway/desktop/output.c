@@ -367,6 +367,7 @@ static int output_repaint_timer_handler(void *data) {
 		return 0;
 	}
 
+	update_animations_for_frame();
 	output_configure_scene(output, &root->root_scene->tree.node, false, NULL);
 
 	struct wlr_scene_output_state_options opts = {

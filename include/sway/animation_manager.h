@@ -33,6 +33,8 @@ void finish_animation(struct animation *animation);
 
 void start_animations();
 
+void update_animations_for_frame(void);
+
 float get_animated_value(float from, float to, const struct animation *animation);
 
 #endif
