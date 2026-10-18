@@ -26,6 +26,7 @@ struct sway_session_lock_output {
 	// invalid if surface is NULL
 	struct wl_listener surface_destroy;
 	struct wl_listener surface_map;
+	struct wl_listener surface_unmap;
 };
 
 static void focus_surface(struct sway_session_lock *lock,
@@ -64,7 +65,16 @@ static void handle_surface_map(struct wl_listener *listener, void *data) {
 	if (surf->lock->focused == NULL) {
 		focus_surface(surf->lock, surf->surface->surface);
 	}
+	// The lock surface now covers the output, so let whatever it draws
+	// translucently (e.g. a fade-out before unlocking) show the desktop
+	// instead of the black backdrop.
+	wlr_scene_node_set_enabled(&surf->background->node, false);
 	cursor_rebase_all();
+}
+
+static void handle_surface_unmap(struct wl_listener *listener, void *data) {
+	struct sway_session_lock_output *surf = wl_container_of(listener, surf, surface_unmap);
+	wlr_scene_node_set_enabled(&surf->background->node, true);
 }
 
 static void handle_surface_destroy(struct wl_listener *listener, void *data) {
@@ -76,6 +86,8 @@ static void handle_surface_destroy(struct wl_listener *listener, void *data) {
 	output->surface = NULL;
 	wl_list_remove(&output->surface_destroy.link);
 	wl_list_remove(&output->surface_map.link);
+	wl_list_remove(&output->surface_unmap.link);
+	wlr_scene_node_set_enabled(&output->background->node, true);
 }
 
 static void lock_output_reconfigure(struct sway_session_lock_output *output) {
@@ -125,6 +137,8 @@ static void handle_new_surface(struct wl_listener *listener, void *data) {
 	wl_signal_add(&lock_surface->events.destroy, &lock_output->surface_destroy);
 	lock_output->surface_map.notify = handle_surface_map;
 	wl_signal_add(&lock_surface->surface->events.map, &lock_output->surface_map);
+	lock_output->surface_unmap.notify = handle_surface_unmap;
+	wl_signal_add(&lock_surface->surface->events.unmap, &lock_output->surface_unmap);
 
 	lock_output_reconfigure(lock_output);
 }
@@ -134,6 +148,7 @@ static void sway_session_lock_output_destroy(struct sway_session_lock_output *ou
 		refocus_output(output);
 		wl_list_remove(&output->surface_destroy.link);
 		wl_list_remove(&output->surface_map.link);
+		wl_list_remove(&output->surface_unmap.link);
 	}
 
 	wl_list_remove(&output->destroy.link);
@@ -247,6 +262,7 @@ static void handle_abandon(struct wl_listener *listener, void *data) {
 	wl_list_for_each(lock_output, &lock->outputs, link) {
 		wlr_scene_rect_set_color(lock_output->background,
 			(float[4]){ 1.f, 0.f, 0.f, 1.f });
+		wlr_scene_node_set_enabled(&lock_output->background->node, true);
 	}
 
 	lock->abandoned = true;
