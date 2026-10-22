@@ -405,6 +405,24 @@ static void handle_button(struct sway_seat *seat, uint32_t time_msec,
 		}
 	}
 
+	// Handle double-clicking a title bar, which maximizes like the button.
+	// The last click is static because the seatop data is remade whenever a
+	// floating move from the first click ends. It's only compared, never
+	// dereferenced.
+	if (on_titlebar && button == BTN_LEFT && cont->view &&
+			config->titlebar_buttons && state == WL_POINTER_BUTTON_STATE_PRESSED) {
+		static struct sway_container *last_click_con = NULL;
+		static uint32_t last_click_msec = 0;
+		if (cont == last_click_con && time_msec - last_click_msec < 400) {
+			last_click_con = NULL;
+			seat_set_focus_container(seat, cont);
+			container_titlebar_button_activate(cont, TITLEBAR_BUTTON_MAXIMIZE);
+			return;
+		}
+		last_click_con = cont;
+		last_click_msec = time_msec;
+	}
+
 	// Handle tiling resize via border
 	if (cont && resize_edge && button == BTN_LEFT &&
 			state == WL_POINTER_BUTTON_STATE_PRESSED && !is_floating) {
