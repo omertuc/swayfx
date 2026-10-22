@@ -290,6 +290,52 @@ void root_scratchpad_unminimize(struct sway_container *con) {
 	root_scratchpad_show(con);
 }
 
+bool root_scratchpad_has_minimized(struct sway_workspace *ws) {
+	for (int i = 0; i < root->scratchpad->length; ++i) {
+		struct sway_container *con = root->scratchpad->items[i];
+		if (container_is_scratchpad_hidden(con) && con->scratchpad_workspace &&
+				strcmp(con->scratchpad_workspace, ws->name) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static void set_foreign_output(struct sway_container *con, void *data) {
+	struct wlr_output *wlr_output = data;
+	if (!con->view || !con->view->foreign_toplevel) {
+		return;
+	}
+	struct wlr_foreign_toplevel_handle_v1 *toplevel = con->view->foreign_toplevel;
+	struct wlr_foreign_toplevel_handle_v1_output *toplevel_output, *tmp;
+	wl_list_for_each_safe(toplevel_output, tmp, &toplevel->outputs, link) {
+		if (toplevel_output->output != wlr_output) {
+			wlr_foreign_toplevel_handle_v1_output_leave(toplevel, toplevel_output->output);
+		}
+	}
+	if (wlr_output) {
+		wlr_foreign_toplevel_handle_v1_output_enter(toplevel, wlr_output);
+	}
+}
+
+void root_scratchpad_update_foreign_outputs(void) {
+	if (!config->scratchpad_minimize) {
+		return;
+	}
+	for (int i = 0; i < root->scratchpad->length; ++i) {
+		struct sway_container *con = root->scratchpad->items[i];
+		if (!container_is_scratchpad_hidden(con)) {
+			continue;
+		}
+		struct sway_workspace *ws = con->scratchpad_workspace ?
+			workspace_by_name(con->scratchpad_workspace) : NULL;
+		struct wlr_output *wlr_output = ws && ws->output &&
+			workspace_is_visible(ws) ? ws->output->wlr_output : NULL;
+		set_foreign_output(con, wlr_output);
+		container_for_each_child(con, set_foreign_output, wlr_output);
+	}
+}
+
 void root_for_each_workspace(void (*f)(struct sway_workspace *ws, void *data),
 		void *data) {
 	for (int i = 0; i < root->outputs->length; ++i) {

@@ -110,6 +110,18 @@ void root_scratchpad_hide(struct sway_container *con);
  */
 void root_scratchpad_unminimize(struct sway_container *con);
 
+/**
+ * Whether any hidden scratchpad container was hidden from this workspace.
+ */
+bool root_scratchpad_has_minimized(struct sway_workspace *ws);
+
+/**
+ * With scratchpad_minimize, report hidden scratchpad windows to taskbars as
+ * being on the output of the workspace they were hidden from, while that
+ * workspace is visible, so per-output taskbars list them with that workspace.
+ */
+void root_scratchpad_update_foreign_outputs(void);
+
 void root_for_each_workspace(void (*f)(struct sway_workspace *ws, void *data),
 		void *data);
 

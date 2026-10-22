@@ -43,6 +43,12 @@ static void handle_outputs_update(
 	struct sway_view *view = wl_container_of(listener, view, outputs_update);
 	struct wlr_scene_outputs_update_event *event = data;
 
+	// root_scratchpad_update_foreign_outputs() handles hidden scratchpad views
+	if (config->scratchpad_minimize && view->container &&
+			container_is_scratchpad_hidden_or_child(view->container)) {
+		return;
+	}
+
 	struct wlr_foreign_toplevel_handle_v1 *toplevel = view->foreign_toplevel;
 	if (toplevel) {
 		struct wlr_foreign_toplevel_handle_v1_output *toplevel_output, *tmp;

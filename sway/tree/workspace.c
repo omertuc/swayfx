@@ -334,6 +334,12 @@ void workspace_consider_destroy(struct sway_workspace *ws) {
 		return;
 	}
 
+	// Keep it so its minimized windows have somewhere to show up in taskbars
+	// and to go back to
+	if (config->scratchpad_minimize && root_scratchpad_has_minimized(ws)) {
+		return;
+	}
+
 	struct sway_seat *seat;
 	wl_list_for_each(seat, &server.input->seats, link) {
 		struct sway_node *node = seat_get_focus_inactive(seat, &root->node);

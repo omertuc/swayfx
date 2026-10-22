@@ -16,6 +16,7 @@
 #include "sway/server.h"
 #include "sway/tree/container.h"
 #include "sway/tree/node.h"
+#include "sway/tree/root.h"
 #include "sway/tree/view.h"
 #include "sway/tree/workspace.h"
 #include "list.h"
@@ -1126,6 +1127,7 @@ static void transaction_progress(void) {
 	}
 	transaction_apply(server.queued_transaction);
 	arrange_root(root);
+	root_scratchpad_update_foreign_outputs();
 	cursor_rebase_all();
 	transaction_destroy(server.queued_transaction);
 	start_animations();
