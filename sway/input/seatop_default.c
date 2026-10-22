@@ -101,6 +101,26 @@ static enum wlr_edges find_edge(struct sway_container *cont,
 		edge |= WLR_EDGE_BOTTOM;
 	}
 
+	// With titlebar_buttons, floating windows resize diagonally from anywhere
+	// on their border near a corner, not only the border-sized square in it
+	if (edge && config->titlebar_buttons && container_is_floating(cont)) {
+		const double corner = 24;
+		if (edge & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT)) {
+			if (cursor->cursor->y < cont->pending.y + corner) {
+				edge |= WLR_EDGE_TOP;
+			} else if (cursor->cursor->y >= cont->pending.y + cont->pending.height - corner) {
+				edge |= WLR_EDGE_BOTTOM;
+			}
+		}
+		if (edge & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM)) {
+			if (cursor->cursor->x < cont->pending.x + corner) {
+				edge |= WLR_EDGE_LEFT;
+			} else if (cursor->cursor->x >= cont->pending.x + cont->pending.width - corner) {
+				edge |= WLR_EDGE_RIGHT;
+			}
+		}
+	}
+
 	return edge;
 }
 
