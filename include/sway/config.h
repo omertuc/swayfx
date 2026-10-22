@@ -512,6 +512,7 @@ struct sway_config {
 	float shadow_offset_x, shadow_offset_y;
 
 	bool titlebar_separator;
+	bool titlebar_buttons;
 	bool scratchpad_minimize;
 
 	list_t *layer_criteria;

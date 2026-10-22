@@ -17,6 +17,7 @@
 #include "sway/output.h"
 #include "sway/server.h"
 #include "sway/tree/arrange.h"
+#include "sway/tree/root.h"
 #include "sway/tree/view.h"
 #include "sway/tree/workspace.h"
 #include "sway/xdg_decoration.h"
@@ -93,6 +94,10 @@ struct sway_container *container_create(struct sway_view *view) {
 		c->dim_rect = alloc_rect_node(c->border.tree, &failed);
 		// Disable rect input
 		c->dim_rect->accepts_input = false;
+
+		for (int i = 0; i < TITLEBAR_BUTTON_COUNT; ++i) {
+			c->title_bar.buttons[i] = alloc_rect_node(c->title_bar.tree, &failed);
+		}
 	}
 
 	if (!failed && !scene_descriptor_assign(&c->scene_tree->node,
@@ -212,6 +217,18 @@ static bool container_is_current_floating(struct sway_container *container) {
 }
 
 // scene rect wants premultiplied colors
+static const float titlebar_button_colors[TITLEBAR_BUTTON_COUNT][4] = {
+	[TITLEBAR_BUTTON_MINIMIZE] = { 0.996f, 0.737f, 0.180f, 1.0f },
+	[TITLEBAR_BUTTON_MAXIMIZE] = { 0.157f, 0.784f, 0.251f, 1.0f },
+	[TITLEBAR_BUTTON_CLOSE] = { 1.0f, 0.373f, 0.341f, 1.0f },
+};
+
+static char *titlebar_button_glyphs[TITLEBAR_BUTTON_COUNT] = {
+	[TITLEBAR_BUTTON_MINIMIZE] = "–",
+	[TITLEBAR_BUTTON_MAXIMIZE] = "□",
+	[TITLEBAR_BUTTON_CLOSE] = "×",
+};
+
 static void scene_rect_set_color(struct wlr_scene_rect *rect,
 		const float color[4], float opacity) {
 	const float premultiplied[] = {
@@ -275,6 +292,13 @@ void container_update(struct sway_container *con) {
 	scene_rect_set_color(con->title_bar.background_left, colors->background, alpha);
 	scene_rect_set_color(con->title_bar.background_right, colors->background, alpha);
 	scene_rect_set_color(con->title_bar.border, colors->border, alpha);
+
+	if (con->view) {
+		for (int i = 0; i < TITLEBAR_BUTTON_COUNT; ++i) {
+			scene_rect_set_color(con->title_bar.buttons[i],
+				titlebar_button_colors[i], alpha);
+		}
+	}
 
 	if (con->view) {
 		scene_rect_set_color(con->border.top, colors->child_border, alpha);
@@ -380,11 +404,57 @@ static void arrange_titlebar_bg_rect(struct wlr_scene_rect *rect,
 	}
 }
 
+// Lays out the buttons at the right end of the title bar and returns the width
+// they take up, so the title and marks can stay clear of them.
+static int arrange_titlebar_buttons(struct sway_container *con,
+		int width, int height) {
+	if (!con->view) {
+		return 0;
+	}
+
+	int size = config->font_height;
+	int gap = size / 2;
+	int buttons_width = TITLEBAR_BUTTON_COUNT * (size + gap);
+	bool enabled = config->titlebar_buttons && size > 0 &&
+		width >= buttons_width + 2 * config->titlebar_h_padding;
+
+	int x = width - config->titlebar_h_padding - size;
+	for (int i = TITLEBAR_BUTTON_COUNT - 1; i >= 0; --i) {
+		struct wlr_scene_rect *rect = con->title_bar.buttons[i];
+		wlr_scene_node_set_enabled(&rect->node, enabled);
+		if (con->title_bar.button_glyphs[i]) {
+			wlr_scene_node_set_enabled(con->title_bar.button_glyphs[i]->node, enabled);
+		}
+		if (!enabled) {
+			continue;
+		}
+
+		int y = (height - size) / 2;
+		wlr_scene_node_set_position(&rect->node, x, y);
+		wlr_scene_rect_set_size(rect, size, size);
+		wlr_scene_rect_set_corner_radii(rect, corner_radii_all(size / 2));
+
+		if (!con->title_bar.button_glyphs[i]) {
+			float color[4] = { 0.0f, 0.0f, 0.0f, 0.6f };
+			con->title_bar.button_glyphs[i] = sway_text_node_create(
+				con->title_bar.tree, titlebar_button_glyphs[i], color, false);
+		}
+		struct sway_text_node *glyph = con->title_bar.button_glyphs[i];
+		wlr_scene_node_set_position(glyph->node,
+			x + (size - glyph->width) / 2, y + (size - glyph->height) / 2);
+
+		x -= size + gap;
+	}
+
+	return enabled ? buttons_width : 0;
+}
+
 void container_arrange_title_bar(struct sway_container *con) {
 	enum alignment title_align = config->title_align;
 	int marks_buffer_width = 0;
 	int width = con->title_width;
 	int height = container_titlebar_height();
+	int text_width = width - arrange_titlebar_buttons(con, width, height);
 
 	struct wlr_box left_cut = {0};
 	struct wlr_box right_cut = {0};
@@ -397,13 +467,13 @@ void container_arrange_title_bar(struct sway_container *con) {
 		if (title_align == ALIGN_RIGHT) {
 			h_padding = config->titlebar_h_padding;
 		} else {
-			h_padding = width - config->titlebar_h_padding - marks_buffer_width;
+			h_padding = text_width - config->titlebar_h_padding - marks_buffer_width;
 		}
 
 		h_padding = MAX(h_padding, config->titlebar_h_padding);
 
 		int alloc_width = MIN((int)node->width,
-			width - h_padding - config->titlebar_h_padding);
+			text_width - h_padding - config->titlebar_h_padding);
 		alloc_width = MAX(alloc_width, 0);
 
 		sway_text_node_set_max_width(node, alloc_width);
@@ -424,9 +494,9 @@ void container_arrange_title_bar(struct sway_container *con) {
 
 		int h_padding;
 		if (title_align == ALIGN_RIGHT) {
-			h_padding = width - config->titlebar_h_padding - node->width;
+			h_padding = text_width - config->titlebar_h_padding - node->width;
 		} else if (title_align == ALIGN_CENTER) {
-			h_padding = ((int)width - marks_buffer_width - node->width) >> 1;
+			h_padding = (text_width - marks_buffer_width - node->width) >> 1;
 		} else {
 			h_padding = config->titlebar_h_padding;
 		}
@@ -434,7 +504,7 @@ void container_arrange_title_bar(struct sway_container *con) {
 		h_padding = MAX(h_padding, config->titlebar_h_padding);
 
 		int alloc_width = MIN((int) node->width,
-			width - h_padding - config->titlebar_h_padding);
+			text_width - h_padding - config->titlebar_h_padding);
 		alloc_width = MAX(alloc_width, 0);
 
 		sway_text_node_set_max_width(node, alloc_width);
@@ -558,6 +628,14 @@ void container_update_title_bar(struct sway_container *con) {
 	if (con->title_bar.marks_text) {
 		wlr_scene_node_destroy(con->title_bar.marks_text->node);
 		con->title_bar.marks_text = NULL;
+	}
+
+	// The button glyphs get remade when the title bar is arranged
+	for (int i = 0; i < TITLEBAR_BUTTON_COUNT; ++i) {
+		if (con->title_bar.button_glyphs[i]) {
+			wlr_scene_node_destroy(con->title_bar.button_glyphs[i]->node);
+			con->title_bar.button_glyphs[i] = NULL;
+		}
 	}
 
 	container_update_marks(con);
@@ -900,6 +978,100 @@ void container_update_representation(struct sway_container *con) {
 
 size_t container_titlebar_height(void) {
 	return config->font_height + config->titlebar_v_padding * 2;
+}
+
+enum sway_titlebar_button container_titlebar_button_at(
+		struct sway_container *con, double lx, double ly) {
+	if (!con->view) {
+		return TITLEBAR_BUTTON_NONE;
+	}
+	for (int i = 0; i < TITLEBAR_BUTTON_COUNT; ++i) {
+		struct wlr_scene_rect *rect = con->title_bar.buttons[i];
+		int x, y;
+		if (!wlr_scene_node_coords(&rect->node, &x, &y)) {
+			continue;
+		}
+		if (lx >= x && lx < x + rect->width && ly >= y && ly < y + rect->height) {
+			return i;
+		}
+	}
+	return TITLEBAR_BUTTON_NONE;
+}
+
+static void titlebar_minimize(struct sway_container *con) {
+	if (!con->scratchpad) {
+		root_scratchpad_add_container(con, NULL);
+	} else if (con->pending.workspace) {
+		root_scratchpad_hide(con);
+	}
+}
+
+static void floating_set_geometry(struct sway_container *con,
+		struct wlr_box *box) {
+	double grow_width = box->width - con->pending.width;
+	double grow_height = box->height - con->pending.height;
+	con->pending.width = box->width;
+	con->pending.height = box->height;
+	con->pending.content_width += grow_width;
+	con->pending.content_height += grow_height;
+	container_floating_move_to(con, box->x, box->y);
+	arrange_container(con);
+}
+
+// Floating containers fill their workspace, or go back to where they were if
+// they already do. Anything else toggles fullscreen.
+static void titlebar_maximize(struct sway_container *con) {
+	if (!container_is_floating(con)) {
+		container_set_fullscreen(con,
+			con->pending.fullscreen_mode == FULLSCREEN_NONE ?
+			FULLSCREEN_WORKSPACE : FULLSCREEN_NONE);
+		arrange_root();
+		return;
+	}
+
+	struct sway_workspace *ws = con->pending.workspace;
+	if (!ws) {
+		return;
+	}
+
+	struct wlr_box current = {
+		.x = con->pending.x,
+		.y = con->pending.y,
+		.width = con->pending.width,
+		.height = con->pending.height,
+	};
+	struct wlr_box area;
+	workspace_get_box(ws, &area);
+
+	// Clients like terminals round their size down to whole cells, so only the
+	// position tells whether the container is still maximized.
+	if (!wlr_box_empty(&con->maximize_restore) &&
+			current.x == area.x && current.y == area.y) {
+		struct wlr_box restore = con->maximize_restore;
+		con->maximize_restore = (struct wlr_box){0};
+		floating_set_geometry(con, &restore);
+	} else {
+		con->maximize_restore = current;
+		floating_set_geometry(con, &area);
+	}
+}
+
+void container_titlebar_button_activate(struct sway_container *con,
+		enum sway_titlebar_button button) {
+	switch (button) {
+	case TITLEBAR_BUTTON_MINIMIZE:
+		titlebar_minimize(con);
+		break;
+	case TITLEBAR_BUTTON_MAXIMIZE:
+		titlebar_maximize(con);
+		break;
+	case TITLEBAR_BUTTON_CLOSE:
+		view_close(con->view);
+		break;
+	case TITLEBAR_BUTTON_NONE:
+		return;
+	}
+	transaction_commit_dirty();
 }
 
 void floating_calculate_constraints(int *min_width, int *max_width,

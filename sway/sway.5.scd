@@ -856,6 +856,12 @@ The default colors are:
 	to be greater than the _horizontal_ or _vertical_ value, the value will be
 	treated as that of _corner_radius_.
 
+*titlebar_buttons* enable|disable|toggle
+	Shows minimize, maximize and close buttons at the right end of window
+	title bars. Minimize moves the window to the scratchpad. Maximize makes a
+	floating window fill its workspace and restores it when pressed again, and
+	toggles fullscreen on a tiled window. Default is _disable_.
+
 *titlebar_separator* enable|disable
 	Allows to remove the border between titlebar and window content.
 

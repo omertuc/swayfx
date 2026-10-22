@@ -373,6 +373,7 @@ static void config_defaults(struct sway_config *config) {
 	color_to_rgba(config->shadow_inactive_color, 0x0000007F);
 
 	config->titlebar_separator = true;
+	config->titlebar_buttons = false;
 	config->scratchpad_minimize = false;
 
 	if (!(config->layer_criteria = create_list())) {

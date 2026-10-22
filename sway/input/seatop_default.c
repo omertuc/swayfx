@@ -393,6 +393,18 @@ static void handle_button(struct sway_seat *seat, uint32_t time_msec,
 		return;
 	}
 
+	// Handle clicking a title bar button
+	if (on_titlebar && button == BTN_LEFT) {
+		enum sway_titlebar_button titlebar_button = container_titlebar_button_at(
+			cont, cursor->cursor->x, cursor->cursor->y);
+		if (titlebar_button != TITLEBAR_BUTTON_NONE) {
+			if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+				container_titlebar_button_activate(cont, titlebar_button);
+			}
+			return;
+		}
+	}
+
 	// Handle tiling resize via border
 	if (cont && resize_edge && button == BTN_LEFT &&
 			state == WL_POINTER_BUTTON_STATE_PRESSED && !is_floating) {

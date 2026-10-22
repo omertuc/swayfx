@@ -67,6 +67,14 @@ struct sway_container_state {
 	double content_width, content_height;
 };
 
+enum sway_titlebar_button {
+	TITLEBAR_BUTTON_MINIMIZE,
+	TITLEBAR_BUTTON_MAXIMIZE,
+	TITLEBAR_BUTTON_CLOSE,
+	TITLEBAR_BUTTON_COUNT,
+	TITLEBAR_BUTTON_NONE = TITLEBAR_BUTTON_COUNT,
+};
+
 struct sway_container {
 	struct sway_node node;
 	struct sway_view *view;
@@ -82,6 +90,10 @@ struct sway_container {
 
 		struct sway_text_node *title_text;
 		struct sway_text_node *marks_text;
+
+		// Only containers with views have buttons
+		struct wlr_scene_rect *buttons[TITLEBAR_BUTTON_COUNT];
+		struct sway_text_node *button_glyphs[TITLEBAR_BUTTON_COUNT];
 	} title_bar;
 
 	struct {
@@ -125,6 +137,10 @@ struct sway_container {
 	// Used when the view changes to CSD unexpectedly. This will be a non-B_CSD
 	// border which we use to restore when the view returns to SSD.
 	enum sway_container_border saved_border;
+
+	// Floating geometry to go back to when the maximize button is pressed on
+	// a maximized container. Includes borders.
+	struct wlr_box maximize_restore;
 
 	// The share of the space of parent container this container occupies
 	double width_fraction;
@@ -228,6 +244,16 @@ void container_update_representation(struct sway_container *container);
  * Return the height of a regular title bar.
  */
 size_t container_titlebar_height(void);
+
+/**
+ * Return the title bar button at the given layout coordinates, or
+ * TITLEBAR_BUTTON_NONE.
+ */
+enum sway_titlebar_button container_titlebar_button_at(
+		struct sway_container *con, double lx, double ly);
+
+void container_titlebar_button_activate(struct sway_container *con,
+		enum sway_titlebar_button button);
 
 void floating_calculate_constraints(int *min_width, int *max_width,
 		int *min_height, int *max_height);
