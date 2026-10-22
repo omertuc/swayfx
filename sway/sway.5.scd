@@ -856,6 +856,12 @@ The default colors are:
 	to be greater than the _horizontal_ or _vertical_ value, the value will be
 	treated as that of _corner_radius_.
 
+*float_new_windows* <width> <height>|disable
+	Opens new windows floating, at the size they ask for but at most
+	_width_ x _height_ pixels, centered on the workspace. Unlike
+	*floating_maximum_size*, this only limits the size windows open at.
+	Default is _disable_.
+
 *titlebar_buttons* enable|disable|toggle
 	Shows minimize, maximize and close buttons at the right end of window
 	title bars. Minimize moves the window to the scratchpad. Maximize makes a

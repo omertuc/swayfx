@@ -513,6 +513,8 @@ struct sway_config {
 
 	bool titlebar_separator;
 	bool titlebar_buttons;
+	// Biggest size new windows open floating at; 0 when they open tiled
+	int float_new_width, float_new_height;
 	bool scratchpad_minimize;
 
 	list_t *layer_criteria;
