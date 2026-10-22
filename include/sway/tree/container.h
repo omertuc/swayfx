@@ -161,6 +161,10 @@ struct sway_container {
 	// Unused for non-scratchpad windows.
 	struct wlr_box transform;
 
+	// Name of the workspace a scratchpad container was hidden from, so that
+	// unminimizing it can put it back there.
+	char *scratchpad_workspace;
+
 	float alpha;
 
 	int corner_radius;

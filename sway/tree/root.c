@@ -115,6 +115,12 @@ static void set_container_transform(struct sway_workspace *ws,
 	con->transform = box;
 }
 
+static void remember_scratchpad_workspace(struct sway_workspace *ws,
+		struct sway_container *con) {
+	free(con->scratchpad_workspace);
+	con->scratchpad_workspace = strdup(ws->name);
+}
+
 void root_scratchpad_add_container(struct sway_container *con, struct sway_workspace *ws) {
 	if (!sway_assert(!con->scratchpad, "Container is already in scratchpad")) {
 		return;
@@ -124,6 +130,7 @@ void root_scratchpad_add_container(struct sway_container *con, struct sway_works
 	struct sway_workspace *workspace = con->pending.workspace;
 
 	set_container_transform(workspace, con);
+	remember_scratchpad_workspace(workspace, con);
 
 	// Clear the fullscreen mode when sending to the scratchpad
 	if (con->pending.fullscreen_mode != FULLSCREEN_NONE) {
@@ -253,6 +260,7 @@ void root_scratchpad_hide(struct sway_container *con) {
 	}
 
 	set_container_transform(con->pending.workspace, con);
+	remember_scratchpad_workspace(con->pending.workspace, con);
 
 	disable_fullscreen(con, NULL);
 	container_for_each_child(con, disable_fullscreen, NULL);
@@ -264,6 +272,22 @@ void root_scratchpad_hide(struct sway_container *con) {
 	list_move_to_end(root->scratchpad, con);
 
 	ipc_event_window(con, "move");
+}
+
+void root_scratchpad_unminimize(struct sway_container *con) {
+	while (con->pending.parent) {
+		con = con->pending.parent;
+	}
+	if (con->scratchpad_workspace) {
+		struct sway_workspace *ws = workspace_by_name(con->scratchpad_workspace);
+		if (!ws) {
+			ws = workspace_create(NULL, con->scratchpad_workspace);
+		}
+		if (ws) {
+			workspace_switch(ws);
+		}
+	}
+	root_scratchpad_show(con);
 }
 
 void root_for_each_workspace(void (*f)(struct sway_workspace *ws, void *data),

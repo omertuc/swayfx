@@ -104,6 +104,12 @@ void root_scratchpad_show(struct sway_container *con);
  */
 void root_scratchpad_hide(struct sway_container *con);
 
+/**
+ * Show a minimized scratchpad container on the workspace it was hidden from,
+ * and switch to that workspace.
+ */
+void root_scratchpad_unminimize(struct sway_container *con);
+
 void root_for_each_workspace(void (*f)(struct sway_workspace *ws, void *data),
 		void *data);
 

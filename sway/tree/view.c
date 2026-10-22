@@ -494,7 +494,7 @@ void view_request_activate(struct sway_view *view, struct sway_seat *seat) {
 		break;
 	case FOWA_FOCUS:
 		if (container_is_scratchpad_hidden_or_child(view->container)) {
-			root_scratchpad_show(view->container);
+			root_scratchpad_unminimize(view->container);
 		} else {
 			seat_set_focus_container(seat, view->container);
 			container_raise_floating(view->container);
@@ -740,7 +740,7 @@ static void handle_foreign_activate_request(
 	wl_list_for_each(seat, &server.input->seats, link) {
 		if (seat->wlr_seat == event->seat) {
 			if (container_is_scratchpad_hidden_or_child(view->container)) {
-				root_scratchpad_show(view->container);
+				root_scratchpad_unminimize(view->container);
 			}
 			seat_set_focus_container(seat, view->container);
 			seat_consider_warp_to_focus(seat);
@@ -817,7 +817,7 @@ static void handle_foreign_minimize(
 		}
 	} else {
 		if(container->scratchpad)
-			root_scratchpad_show(container);
+			root_scratchpad_unminimize(container);
 	}
 }
 

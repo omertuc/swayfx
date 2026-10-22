@@ -659,6 +659,7 @@ void container_destroy(struct sway_container *con) {
 	free(con->title);
 	free(con->formatted_title);
 	free(con->title_format);
+	free(con->scratchpad_workspace);
 	list_free(con->pending.children);
 	list_free(con->current.children);
 

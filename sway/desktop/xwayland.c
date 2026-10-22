@@ -644,7 +644,7 @@ static void handle_request_minimize(struct wl_listener *listener, void *data) {
 			}
 		} else {
 			if(container->scratchpad) {
-				root_scratchpad_show(container);
+				root_scratchpad_unminimize(container);
 			}
 		}
 		transaction_commit_dirty();
