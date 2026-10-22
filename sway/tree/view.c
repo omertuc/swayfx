@@ -825,6 +825,7 @@ static void handle_foreign_minimize(
 		if(container->scratchpad)
 			root_scratchpad_unminimize(container);
 	}
+	transaction_commit_dirty();
 }
 
 static void handle_foreign_destroy(
@@ -839,6 +840,21 @@ static void handle_foreign_destroy(
 		wl_list_remove(&view->foreign_minimize.link);
 	}
 	wl_list_remove(&view->foreign_destroy.link);
+}
+
+// For float_new_windows: float at the size the window asks for, up to the
+// configured size, so a window that remembers being maximized doesn't open
+// covering the screen
+static void float_new_window(struct sway_container *con) {
+	container_set_floating(con, true);
+	double width = fmin(con->pending.content_width, config->float_new_width);
+	double height = fmin(con->pending.content_height, config->float_new_height);
+	if (width < con->pending.content_width || height < con->pending.content_height) {
+		con->pending.content_width = width;
+		con->pending.content_height = height;
+		container_set_geometry_from_content(con);
+		container_floating_move_to_center(con);
+	}
 }
 
 void view_map(struct sway_view *view, struct wlr_surface *wlr_surface,
@@ -947,6 +963,10 @@ void view_map(struct sway_view *view, struct wlr_surface *wlr_surface,
 		view->container->pending.border = config->floating_border;
 		view->container->pending.border_thickness = config->floating_border_thickness;
 		container_set_floating(view->container, true);
+	} else if (config->float_new_width > 0) {
+		view->container->pending.border = config->floating_border;
+		view->container->pending.border_thickness = config->floating_border_thickness;
+		float_new_window(view->container);
 	} else {
 		view->container->pending.border = config->border;
 		view->container->pending.border_thickness = config->border_thickness;
