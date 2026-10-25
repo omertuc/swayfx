@@ -1459,6 +1459,60 @@ void container_floating_move_to_center(struct sway_container *con) {
 	container_floating_translate(con, new_lx - con->pending.x, new_ly - con->pending.y);
 }
 
+static bool floating_center_taken(struct sway_container *con, double cx, double cy,
+		double slack) {
+	struct sway_workspace *ws = con->pending.workspace;
+	for (int i = 0; i < ws->floating->length; ++i) {
+		struct sway_container *other = ws->floating->items[i];
+		if (other == con) {
+			continue;
+		}
+		double ocx = other->pending.x + other->pending.width / 2;
+		double ocy = other->pending.y + other->pending.height / 2;
+		if (fabs(ocx - cx) < slack && fabs(ocy - cy) < slack) {
+			return true;
+		}
+	}
+	return false;
+}
+
+void container_floating_cascade(struct sway_container *con) {
+	struct sway_workspace *ws = con->pending.workspace;
+	if (!ws || !container_is_floating(con)) {
+		return;
+	}
+	double step = container_titlebar_height();
+	if (step < 24) {
+		step = 24;
+	}
+	double cx = con->pending.x + con->pending.width / 2;
+	double cy = con->pending.y + con->pending.height / 2;
+	// Only windows sway centered, not ones moved somewhere on purpose
+	if (fabs(cx - (ws->x + ws->width / 2.0)) >= step ||
+			fabs(cy - (ws->y + ws->height / 2.0)) >= step) {
+		return;
+	}
+	if (!floating_center_taken(con, cx, cy, step / 2)) {
+		return;
+	}
+	// Down-right until the window would leave the workspace, then up-left
+	for (int dir = 1; dir >= -1; dir -= 2) {
+		for (int k = 1; ; ++k) {
+			double d = dir * k * step;
+			double x = con->pending.x + d, y = con->pending.y + d;
+			if (x < ws->x || y < ws->y ||
+					x + con->pending.width > ws->x + ws->width ||
+					y + con->pending.height > ws->y + ws->height) {
+				break;
+			}
+			if (!floating_center_taken(con, cx + d, cy + d, step / 2)) {
+				container_floating_translate(con, d, d);
+				return;
+			}
+		}
+	}
+}
+
 static bool find_urgent_iterator(struct sway_container *con, void *data) {
 	return con->view && view_is_urgent(con->view);
 }

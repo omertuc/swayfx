@@ -310,6 +310,12 @@ void container_floating_move_to(struct sway_container *con,
  */
 void container_floating_move_to_center(struct sway_container *con);
 
+/**
+ * If a floating container is centered on its workspace and on another floating
+ * container there, move it down-right a titlebar height at a time until it isn't.
+ */
+void container_floating_cascade(struct sway_container *con);
+
 bool container_has_urgent_child(struct sway_container *container);
 
 /**

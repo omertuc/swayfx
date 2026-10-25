@@ -999,6 +999,12 @@ void view_map(struct sway_view *view, struct wlr_surface *wlr_surface,
 
 	view_execute_criteria(view);
 
+	// New floating windows are centered, so they'd open exactly on top of an
+	// earlier one
+	if (container_is_floating(container)) {
+		container_floating_cascade(container);
+	}
+
 	bool set_focus = should_focus(view);
 
 #if WLR_HAS_XWAYLAND
