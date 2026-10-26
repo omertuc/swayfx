@@ -23,10 +23,7 @@ struct cmd_results *cmd_window_state(int argc, char **argv) {
 	}
 	for (size_t i = 0; i < sizeof(states) / sizeof(states[0]); ++i) {
 		if (strcasecmp(argv[0], states[i]) == 0) {
-			if (!container_window_state(con, i)) {
-				return cmd_results_new(CMD_FAILURE,
-					"Only floating windows can be snapped to a half");
-			}
+			container_window_state(con, i);
 			return cmd_results_new(CMD_SUCCESS, NULL);
 		}
 	}

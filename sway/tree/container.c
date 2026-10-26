@@ -1089,44 +1089,54 @@ static void set_workspace_fullscreen(struct sway_container *con, bool enable) {
 	arrange_root();
 }
 
-// Floating containers fill their workspace, or go back to where they were if
-// they already do. Anything else toggles fullscreen.
+// Fill the workspace, or go back to where the container was if it already
+// does. A tiled container is floated first (at the default floating size,
+// which is what restoring goes back to); a fullscreen one leaves fullscreen.
 static void titlebar_maximize(struct sway_container *con) {
-	if (!container_is_floating(con)) {
-		set_workspace_fullscreen(con, con->pending.fullscreen_mode == FULLSCREEN_NONE);
+	if (con->pending.fullscreen_mode != FULLSCREEN_NONE) {
+		set_workspace_fullscreen(con, false);
 		return;
+	}
+	if (!container_is_floating(con)) {
+		container_set_floating(con, true);
 	}
 	floating_snap(con, floating_snap_state(con) == SNAP_MAXIMIZED ?
 		SNAP_NONE : SNAP_MAXIMIZED);
 }
 
-bool container_window_state(struct sway_container *con,
+bool container_floating_snapped(struct sway_container *con) {
+	return container_is_floating(con) && floating_snap_state(con) != SNAP_NONE;
+}
+
+void workspace_snap_box(struct sway_workspace *ws,
+		enum sway_window_state state, struct wlr_box *box) {
+	floating_snap_box(ws, state == WINDOW_STATE_LEFT ? SNAP_LEFT :
+		state == WINDOW_STATE_RIGHT ? SNAP_RIGHT : SNAP_MAXIMIZED, box);
+}
+
+void container_window_state(struct sway_container *con,
 		enum sway_window_state state) {
 	if (state == WINDOW_STATE_MINIMIZE) {
 		titlebar_minimize(con);
-		return true;
+		return;
+	}
+	if (con->pending.fullscreen_mode != FULLSCREEN_NONE) {
+		if (state == WINDOW_STATE_RESTORE || state == WINDOW_STATE_DOWN) {
+			set_workspace_fullscreen(con, false);
+		}
+		return;
 	}
 	if (!container_is_floating(con)) {
-		bool fullscreen = con->pending.fullscreen_mode != FULLSCREEN_NONE;
-		switch (state) {
-		case WINDOW_STATE_MAXIMIZE:
-		case WINDOW_STATE_UP:
-			set_workspace_fullscreen(con, true);
-			return true;
-		case WINDOW_STATE_RESTORE:
-			set_workspace_fullscreen(con, false);
-			return true;
-		case WINDOW_STATE_DOWN:
-			if (fullscreen) {
-				set_workspace_fullscreen(con, false);
-			} else {
-				titlebar_minimize(con);
-			}
-			return true;
-		default:
-			// Halves of the workspace only make sense for floating windows
-			return false;
+		if (state == WINDOW_STATE_RESTORE) {
+			return;
 		}
+		if (state == WINDOW_STATE_DOWN) {
+			titlebar_minimize(con);
+			return;
+		}
+		// Maximizing or snapping floats the container first, at the default
+		// floating size, which restoring goes back to
+		container_set_floating(con, true);
 	}
 	enum floating_snap current = floating_snap_state(con);
 	switch (state) {
@@ -1155,7 +1165,6 @@ bool container_window_state(struct sway_container *con,
 	case WINDOW_STATE_MINIMIZE:
 		break;
 	}
-	return true;
 }
 
 void container_titlebar_button_activate(struct sway_container *con,

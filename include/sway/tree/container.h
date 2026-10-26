@@ -272,10 +272,22 @@ enum sway_window_state {
 /**
  * Maximize, restore, minimize or snap to a half of the workspace, like the
  * titlebar buttons and the Windows shortcuts (Win+Up/Down/Left/Right for
- * up/down/left/right). Returns false if it doesn't apply to the container.
+ * up/down/left/right). Maximizing or snapping a tiled container floats it.
  */
-bool container_window_state(struct sway_container *con,
+void container_window_state(struct sway_container *con,
 		enum sway_window_state state);
+
+/**
+ * Whether a floating container is maximized or snapped to a half.
+ */
+bool container_floating_snapped(struct sway_container *con);
+
+/**
+ * Where window_state maximize (left, right) puts a floating container on the
+ * workspace.
+ */
+void workspace_snap_box(struct sway_workspace *ws,
+		enum sway_window_state state, struct wlr_box *box);
 
 void floating_calculate_constraints(int *min_width, int *max_width,
 		int *min_height, int *max_height);

@@ -1053,12 +1053,12 @@ The default colors are:
 
 *window_state* maximize|restore|minimize|up|down|left|right
 	Does what the title bar buttons and the Windows shortcuts do. _maximize_
-	fills the workspace with a floating window and makes a tiled one
-	fullscreen; _restore_ undoes that or a snap to a half. _minimize_ sends the
+	fills the workspace with the window; _restore_ undoes that or a snap to a
+	half, and takes a fullscreen window out of fullscreen. _minimize_ sends the
 	window to the scratchpad. _left_ and _right_ fill that half of the
-	workspace with a floating window, or restore it if it's in the other half.
-	_up_ maximizes, and _down_ restores a maximized or snapped window and
-	minimizes any other.
+	workspace, or restore a window that's in the other half. _up_ maximizes,
+	and _down_ restores a maximized or snapped window and minimizes any other.
+	Maximizing or snapping a tiled window floats it.
 
 *workspace* [--no-auto-back-and-forth] [number] <[num:]name>
 	Switches to the specified workspace. The _num:_ portion of the name is
