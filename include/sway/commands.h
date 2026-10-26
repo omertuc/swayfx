@@ -226,6 +226,7 @@ sway_cmd cmd_unbindswitch;
 sway_cmd cmd_unbindgesture;
 sway_cmd cmd_unbindsym;
 sway_cmd cmd_unmark;
+sway_cmd cmd_window_state;
 sway_cmd cmd_urgent;
 sway_cmd cmd_workspace;
 sway_cmd cmd_workspace_layout;

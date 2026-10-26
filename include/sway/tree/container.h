@@ -139,7 +139,7 @@ struct sway_container {
 	enum sway_container_border saved_border;
 
 	// Floating geometry to go back to when the maximize button is pressed on
-	// a maximized container. Includes borders.
+	// a maximized container, or a snapped one is restored. Includes borders.
 	struct wlr_box maximize_restore;
 
 	// The share of the space of parent container this container occupies
@@ -258,6 +258,24 @@ enum sway_titlebar_button container_titlebar_button_at(
 
 void container_titlebar_button_activate(struct sway_container *con,
 		enum sway_titlebar_button button);
+
+enum sway_window_state {
+	WINDOW_STATE_MAXIMIZE,
+	WINDOW_STATE_RESTORE,
+	WINDOW_STATE_MINIMIZE,
+	WINDOW_STATE_UP,
+	WINDOW_STATE_DOWN,
+	WINDOW_STATE_LEFT,
+	WINDOW_STATE_RIGHT,
+};
+
+/**
+ * Maximize, restore, minimize or snap to a half of the workspace, like the
+ * titlebar buttons and the Windows shortcuts (Win+Up/Down/Left/Right for
+ * up/down/left/right). Returns false if it doesn't apply to the container.
+ */
+bool container_window_state(struct sway_container *con,
+		enum sway_window_state state);
 
 void floating_calculate_constraints(int *min_width, int *max_width,
 		int *min_height, int *max_height);

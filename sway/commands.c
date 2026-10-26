@@ -166,6 +166,7 @@ static const struct cmd_handler command_handlers[] = {
 	{ "title_format", cmd_title_format },
 	{ "unmark", cmd_unmark },
 	{ "urgent", cmd_urgent },
+	{ "window_state", cmd_window_state },
 };
 
 static int handler_compare(const void *_a, const void *_b) {

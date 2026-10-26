@@ -1019,42 +1019,143 @@ static void floating_set_geometry(struct sway_container *con,
 	arrange_container(con);
 }
 
+enum floating_snap {
+	SNAP_NONE,
+	SNAP_MAXIMIZED,
+	SNAP_LEFT,
+	SNAP_RIGHT,
+};
+
+static void floating_snap_box(struct sway_workspace *ws, enum floating_snap snap,
+		struct wlr_box *box) {
+	workspace_get_box(ws, box);
+	if (snap == SNAP_LEFT || snap == SNAP_RIGHT) {
+		int half = box->width / 2;
+		if (snap == SNAP_RIGHT) {
+			box->x += box->width - half;
+		}
+		box->width = half;
+	}
+}
+
+// Clients like terminals round their size down to whole cells, so the position
+// and roughly the width tell whether the container is still snapped.
+static enum floating_snap floating_snap_state(struct sway_container *con) {
+	struct sway_workspace *ws = con->pending.workspace;
+	if (!ws || wlr_box_empty(&con->maximize_restore)) {
+		return SNAP_NONE;
+	}
+	for (enum floating_snap snap = SNAP_MAXIMIZED; snap <= SNAP_RIGHT; ++snap) {
+		struct wlr_box box;
+		floating_snap_box(ws, snap, &box);
+		if (con->pending.x == box.x && con->pending.y == box.y &&
+				fabs(con->pending.width - box.width) < box.width / 4.0) {
+			return snap;
+		}
+	}
+	return SNAP_NONE;
+}
+
+// Fill the workspace or half of it, or with SNAP_NONE go back to where the
+// container was before
+static void floating_snap(struct sway_container *con, enum floating_snap snap) {
+	struct sway_workspace *ws = con->pending.workspace;
+	enum floating_snap current = floating_snap_state(con);
+	if (!ws || snap == current) {
+		return;
+	}
+	if (snap == SNAP_NONE) {
+		struct wlr_box restore = con->maximize_restore;
+		con->maximize_restore = (struct wlr_box){0};
+		floating_set_geometry(con, &restore);
+		return;
+	}
+	if (current == SNAP_NONE) {
+		con->maximize_restore = (struct wlr_box){
+			.x = con->pending.x,
+			.y = con->pending.y,
+			.width = con->pending.width,
+			.height = con->pending.height,
+		};
+	}
+	struct wlr_box box;
+	floating_snap_box(ws, snap, &box);
+	floating_set_geometry(con, &box);
+}
+
+static void set_workspace_fullscreen(struct sway_container *con, bool enable) {
+	container_set_fullscreen(con,
+		enable ? FULLSCREEN_WORKSPACE : FULLSCREEN_NONE);
+	arrange_root();
+}
+
 // Floating containers fill their workspace, or go back to where they were if
 // they already do. Anything else toggles fullscreen.
 static void titlebar_maximize(struct sway_container *con) {
 	if (!container_is_floating(con)) {
-		container_set_fullscreen(con,
-			con->pending.fullscreen_mode == FULLSCREEN_NONE ?
-			FULLSCREEN_WORKSPACE : FULLSCREEN_NONE);
-		arrange_root();
+		set_workspace_fullscreen(con, con->pending.fullscreen_mode == FULLSCREEN_NONE);
 		return;
 	}
+	floating_snap(con, floating_snap_state(con) == SNAP_MAXIMIZED ?
+		SNAP_NONE : SNAP_MAXIMIZED);
+}
 
-	struct sway_workspace *ws = con->pending.workspace;
-	if (!ws) {
-		return;
+bool container_window_state(struct sway_container *con,
+		enum sway_window_state state) {
+	if (state == WINDOW_STATE_MINIMIZE) {
+		titlebar_minimize(con);
+		return true;
 	}
-
-	struct wlr_box current = {
-		.x = con->pending.x,
-		.y = con->pending.y,
-		.width = con->pending.width,
-		.height = con->pending.height,
-	};
-	struct wlr_box area;
-	workspace_get_box(ws, &area);
-
-	// Clients like terminals round their size down to whole cells, so only the
-	// position tells whether the container is still maximized.
-	if (!wlr_box_empty(&con->maximize_restore) &&
-			current.x == area.x && current.y == area.y) {
-		struct wlr_box restore = con->maximize_restore;
-		con->maximize_restore = (struct wlr_box){0};
-		floating_set_geometry(con, &restore);
-	} else {
-		con->maximize_restore = current;
-		floating_set_geometry(con, &area);
+	if (!container_is_floating(con)) {
+		bool fullscreen = con->pending.fullscreen_mode != FULLSCREEN_NONE;
+		switch (state) {
+		case WINDOW_STATE_MAXIMIZE:
+		case WINDOW_STATE_UP:
+			set_workspace_fullscreen(con, true);
+			return true;
+		case WINDOW_STATE_RESTORE:
+			set_workspace_fullscreen(con, false);
+			return true;
+		case WINDOW_STATE_DOWN:
+			if (fullscreen) {
+				set_workspace_fullscreen(con, false);
+			} else {
+				titlebar_minimize(con);
+			}
+			return true;
+		default:
+			// Halves of the workspace only make sense for floating windows
+			return false;
+		}
 	}
+	enum floating_snap current = floating_snap_state(con);
+	switch (state) {
+	case WINDOW_STATE_MAXIMIZE:
+	case WINDOW_STATE_UP:
+		floating_snap(con, SNAP_MAXIMIZED);
+		break;
+	case WINDOW_STATE_RESTORE:
+		floating_snap(con, SNAP_NONE);
+		break;
+	case WINDOW_STATE_DOWN:
+		if (current == SNAP_NONE) {
+			titlebar_minimize(con);
+		} else {
+			floating_snap(con, SNAP_NONE);
+		}
+		break;
+	// Like Windows: toward the other half from a half goes back to the
+	// window's own size
+	case WINDOW_STATE_LEFT:
+		floating_snap(con, current == SNAP_RIGHT ? SNAP_NONE : SNAP_LEFT);
+		break;
+	case WINDOW_STATE_RIGHT:
+		floating_snap(con, current == SNAP_LEFT ? SNAP_NONE : SNAP_RIGHT);
+		break;
+	case WINDOW_STATE_MINIMIZE:
+		break;
+	}
+	return true;
 }
 
 void container_titlebar_button_activate(struct sway_container *con,

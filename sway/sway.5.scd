@@ -1051,6 +1051,15 @@ The default colors are:
 	state. Using _allow_ or _deny_ controls the window's ability to set itself
 	as urgent. By default, windows are allowed to set their own urgency.
 
+*window_state* maximize|restore|minimize|up|down|left|right
+	Does what the title bar buttons and the Windows shortcuts do. _maximize_
+	fills the workspace with a floating window and makes a tiled one
+	fullscreen; _restore_ undoes that or a snap to a half. _minimize_ sends the
+	window to the scratchpad. _left_ and _right_ fill that half of the
+	workspace with a floating window, or restore it if it's in the other half.
+	_up_ maximizes, and _down_ restores a maximized or snapped window and
+	minimizes any other.
+
 *workspace* [--no-auto-back-and-forth] [number] <[num:]name>
 	Switches to the specified workspace. The _num:_ portion of the name is
 	optional and will be used for ordering. If _num:_ is not given and
