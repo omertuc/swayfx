@@ -98,6 +98,7 @@ struct sway_container *container_create(struct sway_view *view) {
 		for (int i = 0; i < TITLEBAR_BUTTON_COUNT; ++i) {
 			c->title_bar.buttons[i] = alloc_rect_node(c->title_bar.tree, &failed);
 		}
+		c->title_bar.hovered = TITLEBAR_BUTTON_NONE;
 	}
 
 	if (!failed && !scene_descriptor_assign(&c->scene_tree->node,
@@ -216,18 +217,13 @@ static bool container_is_current_floating(struct sway_container *container) {
 	return false;
 }
 
-// scene rect wants premultiplied colors
-static const float titlebar_button_colors[TITLEBAR_BUTTON_COUNT][4] = {
-	[TITLEBAR_BUTTON_MINIMIZE] = { 0.996f, 0.737f, 0.180f, 1.0f },
-	[TITLEBAR_BUTTON_MAXIMIZE] = { 0.157f, 0.784f, 0.251f, 1.0f },
-	[TITLEBAR_BUTTON_CLOSE] = { 1.0f, 0.373f, 0.341f, 1.0f },
-};
+// Like Windows' and GNOME's: the icon in the title's color, a faint
+// background under the pointer, and red with a white icon for close
+static const float titlebar_close_hover[4] = { 0.769f, 0.169f, 0.110f, 1.0f };
+static const float titlebar_close_hover_icon[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
 
-static char *titlebar_button_glyphs[TITLEBAR_BUTTON_COUNT] = {
-	[TITLEBAR_BUTTON_MINIMIZE] = "–",
-	[TITLEBAR_BUTTON_MAXIMIZE] = "□",
-	[TITLEBAR_BUTTON_CLOSE] = "×",
-};
+// The container whose title bar button is under the pointer
+static struct sway_container *titlebar_hovered;
 
 static void scene_rect_set_color(struct wlr_scene_rect *rect,
 		const float color[4], float opacity) {
@@ -295,8 +291,24 @@ void container_update(struct sway_container *con) {
 
 	if (con->view) {
 		for (int i = 0; i < TITLEBAR_BUTTON_COUNT; ++i) {
-			scene_rect_set_color(con->title_bar.buttons[i],
-				titlebar_button_colors[i], alpha);
+			bool hovered = con->title_bar.hovered == (enum sway_titlebar_button)i;
+			bool close = i == TITLEBAR_BUTTON_CLOSE;
+			float background[4] = {
+				colors->text[0], colors->text[1], colors->text[2], 0.15f,
+			};
+			if (close) {
+				memcpy(background, titlebar_close_hover, sizeof(background));
+			}
+			scene_rect_set_color(con->title_bar.buttons[i], background,
+				hovered ? alpha : 0);
+			struct sway_icon_node *icon = con->title_bar.button_icons[i];
+			if (icon) {
+				float color[4];
+				memcpy(color, hovered && close ?
+					titlebar_close_hover_icon : colors->text, sizeof(color));
+				color[3] *= alpha;
+				sway_icon_node_set_color(icon, color);
+			}
 		}
 	}
 
@@ -404,6 +416,31 @@ static void arrange_titlebar_bg_rect(struct wlr_scene_rect *rect,
 	}
 }
 
+enum floating_snap {
+	SNAP_NONE,
+	SNAP_MAXIMIZED,
+	SNAP_LEFT,
+	SNAP_RIGHT,
+};
+
+static enum floating_snap floating_snap_state(struct sway_container *con);
+
+static enum sway_icon titlebar_button_icon(struct sway_container *con,
+		enum sway_titlebar_button button) {
+	switch (button) {
+	case TITLEBAR_BUTTON_MINIMIZE:
+		return SWAY_ICON_MINIMIZE;
+	case TITLEBAR_BUTTON_MAXIMIZE:
+		// Restore for a window that's maximized now
+		return con->pending.fullscreen_mode != FULLSCREEN_NONE ||
+			(container_is_floating(con) &&
+				floating_snap_state(con) == SNAP_MAXIMIZED) ?
+			SWAY_ICON_RESTORE : SWAY_ICON_MAXIMIZE;
+	default:
+		return SWAY_ICON_CLOSE;
+	}
+}
+
 // Lays out the buttons at the right end of the title bar and returns the width
 // they take up, so the title and marks can stay clear of them.
 static int arrange_titlebar_buttons(struct sway_container *con,
@@ -412,8 +449,8 @@ static int arrange_titlebar_buttons(struct sway_container *con,
 		return 0;
 	}
 
-	int size = config->font_height;
-	int gap = size / 2;
+	int size = MIN(height, config->font_height + config->titlebar_v_padding);
+	int gap = size / 6;
 	int buttons_width = TITLEBAR_BUTTON_COUNT * (size + gap);
 	bool enabled = config->titlebar_buttons && size > 0 &&
 		width >= buttons_width + 2 * config->titlebar_h_padding;
@@ -422,8 +459,8 @@ static int arrange_titlebar_buttons(struct sway_container *con,
 	for (int i = TITLEBAR_BUTTON_COUNT - 1; i >= 0; --i) {
 		struct wlr_scene_rect *rect = con->title_bar.buttons[i];
 		wlr_scene_node_set_enabled(&rect->node, enabled);
-		if (con->title_bar.button_glyphs[i]) {
-			wlr_scene_node_set_enabled(con->title_bar.button_glyphs[i]->node, enabled);
+		if (con->title_bar.button_icons[i]) {
+			wlr_scene_node_set_enabled(con->title_bar.button_icons[i]->node, enabled);
 		}
 		if (!enabled) {
 			continue;
@@ -434,14 +471,18 @@ static int arrange_titlebar_buttons(struct sway_container *con,
 		wlr_scene_rect_set_size(rect, size, size);
 		wlr_scene_rect_set_corner_radii(rect, corner_radii_all(size / 2));
 
-		if (!con->title_bar.button_glyphs[i]) {
-			float color[4] = { 0.0f, 0.0f, 0.0f, 0.6f };
-			con->title_bar.button_glyphs[i] = sway_text_node_create(
-				con->title_bar.tree, titlebar_button_glyphs[i], color, false);
+		enum sway_icon kind = titlebar_button_icon(con, i);
+		if (!con->title_bar.button_icons[i]) {
+			struct border_colors *colors = container_get_current_colors(con);
+			con->title_bar.button_icons[i] = sway_icon_node_create(
+				con->title_bar.tree, kind, size, colors->text);
 		}
-		struct sway_text_node *glyph = con->title_bar.button_glyphs[i];
-		wlr_scene_node_set_position(glyph->node,
-			x + (size - glyph->width) / 2, y + (size - glyph->height) / 2);
+		struct sway_icon_node *icon = con->title_bar.button_icons[i];
+		if (icon) {
+			sway_icon_node_set_icon(icon, kind);
+			sway_icon_node_set_size(icon, size);
+			wlr_scene_node_set_position(icon->node, x, y);
+		}
 
 		x -= size + gap;
 	}
@@ -630,11 +671,11 @@ void container_update_title_bar(struct sway_container *con) {
 		con->title_bar.marks_text = NULL;
 	}
 
-	// The button glyphs get remade when the title bar is arranged
+	// The button icons get remade when the title bar is arranged
 	for (int i = 0; i < TITLEBAR_BUTTON_COUNT; ++i) {
-		if (con->title_bar.button_glyphs[i]) {
-			wlr_scene_node_destroy(con->title_bar.button_glyphs[i]->node);
-			con->title_bar.button_glyphs[i] = NULL;
+		if (con->title_bar.button_icons[i]) {
+			wlr_scene_node_destroy(con->title_bar.button_icons[i]->node);
+			con->title_bar.button_icons[i] = NULL;
 		}
 	}
 
@@ -678,6 +719,9 @@ void container_destroy(struct sway_container *con) {
 }
 
 void container_begin_destroy(struct sway_container *con) {
+	if (con == titlebar_hovered) {
+		titlebar_hovered = NULL;
+	}
 	if (con->view) {
 		ipc_event_window(con, "close");
 	}
@@ -1019,13 +1063,6 @@ static void floating_set_geometry(struct sway_container *con,
 	arrange_container(con);
 }
 
-enum floating_snap {
-	SNAP_NONE,
-	SNAP_MAXIMIZED,
-	SNAP_LEFT,
-	SNAP_RIGHT,
-};
-
 static void floating_snap_box(struct sway_workspace *ws, enum floating_snap snap,
 		struct wlr_box *box) {
 	workspace_get_box(ws, box);
@@ -1167,8 +1204,31 @@ void container_window_state(struct sway_container *con,
 	}
 }
 
+void container_titlebar_hover(struct sway_container *con,
+		enum sway_titlebar_button button) {
+	if (!con) {
+		button = TITLEBAR_BUTTON_NONE;
+	}
+	if (con == titlebar_hovered &&
+			(!con || con->title_bar.hovered == button)) {
+		return;
+	}
+	if (titlebar_hovered) {
+		titlebar_hovered->title_bar.hovered = TITLEBAR_BUTTON_NONE;
+		container_update(titlebar_hovered);
+	}
+	titlebar_hovered = button == TITLEBAR_BUTTON_NONE ? NULL : con;
+	if (titlebar_hovered) {
+		con->title_bar.hovered = button;
+		container_update(con);
+	}
+}
+
 void container_titlebar_button_activate(struct sway_container *con,
 		enum sway_titlebar_button button) {
+	// The pointer is over the button that was clicked; after a maximize or
+	// minimize it may well not be any more
+	container_titlebar_hover(NULL, TITLEBAR_BUTTON_NONE);
 	switch (button) {
 	case TITLEBAR_BUTTON_MINIMIZE:
 		titlebar_minimize(con);

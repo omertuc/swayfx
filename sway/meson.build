@@ -12,6 +12,7 @@ sway_sources = files(
 	'realtime.c',
 	'scene_descriptor.c',
 	'server.c',
+	'sway_icon_node.c',
 	'sway_text_node.c',
 	'swaynag.c',
 	'xdg_activation_v1.c',

@@ -649,6 +649,19 @@ static void check_focus_follows_mouse(struct sway_seat *seat,
 	}
 }
 
+// With titlebar_buttons, highlight the button under the pointer
+static void update_titlebar_hover(struct sway_cursor *cursor,
+		struct sway_node *node) {
+	struct sway_container *con = NULL;
+	enum sway_titlebar_button button = TITLEBAR_BUTTON_NONE;
+	if (config->titlebar_buttons && node && node->type == N_CONTAINER) {
+		con = node->sway_container;
+		button = container_titlebar_button_at(con,
+			cursor->cursor->x, cursor->cursor->y);
+	}
+	container_titlebar_hover(con, button);
+}
+
 static void handle_pointer_motion(struct sway_seat *seat, uint32_t time_msec) {
 	struct seatop_default_event *e = seat->seatop_data;
 	struct sway_cursor *cursor = seat->cursor;
@@ -671,6 +684,8 @@ static void handle_pointer_motion(struct sway_seat *seat, uint32_t time_msec) {
 		cursor_update_image(cursor, node);
 		wlr_seat_pointer_notify_clear_focus(seat->wlr_seat);
 	}
+
+	update_titlebar_hover(cursor, node);
 
 	drag_icons_update_position(seat);
 

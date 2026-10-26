@@ -7,6 +7,7 @@
 #include <wlr/types/wlr_scene.h>
 #include "list.h"
 #include "sway/animation_manager.h"
+#include "sway/sway_icon_node.h"
 #include "sway/tree/node.h"
 
 struct sway_view;
@@ -93,7 +94,9 @@ struct sway_container {
 
 		// Only containers with views have buttons
 		struct wlr_scene_rect *buttons[TITLEBAR_BUTTON_COUNT];
-		struct sway_text_node *button_glyphs[TITLEBAR_BUTTON_COUNT];
+		struct sway_icon_node *button_icons[TITLEBAR_BUTTON_COUNT];
+		// The button under the pointer, which gets a background
+		enum sway_titlebar_button hovered;
 	} title_bar;
 
 	struct {
@@ -257,6 +260,13 @@ enum sway_titlebar_button container_titlebar_button_at(
 		struct sway_container *con, double lx, double ly);
 
 void container_titlebar_button_activate(struct sway_container *con,
+		enum sway_titlebar_button button);
+
+/**
+ * Highlight the title bar button under the pointer: `button` of `con`, or
+ * none with a NULL `con`.
+ */
+void container_titlebar_hover(struct sway_container *con,
 		enum sway_titlebar_button button);
 
 enum sway_window_state {
