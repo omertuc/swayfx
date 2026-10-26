@@ -823,6 +823,13 @@ static void ipc_json_describe_container(struct sway_container *c, json_object *o
 	json_object_object_add(object, "scratchpad_state",
 			json_object_new_string(!c->scratchpad ? "none" : "fresh"));
 
+	// Where a minimized (scratchpad) window goes back to, so switchers and
+	// taskbars can list it with that workspace
+	if (c->scratchpad_workspace) {
+		json_object_object_add(object, "scratchpad_workspace",
+			json_object_new_string(c->scratchpad_workspace));
+	}
+
 	struct sway_node *parent = node_get_parent(&c->node);
 	struct wlr_box parent_box = {0, 0, 0, 0};
 
