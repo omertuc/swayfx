@@ -60,6 +60,56 @@ static void refocus_output(struct sway_session_lock_output *output) {
 	}
 }
 
+// How long to keep showing the last frame while waiting for the lock client to
+// draw, before blanking to black. Input already goes nowhere but the lock.
+#define LOCK_COVER_TIMEOUT_MS 250
+
+static bool lock_output_covered(struct sway_session_lock_output *output) {
+	// Disabled outputs (and the fallback output, which is in all_outputs too)
+	// are never shown and never get a lock surface.
+	return !output->output->enabled || output->background->node.enabled ||
+		(output->surface && output->surface->surface->mapped);
+}
+
+static void lock_finish_covering(struct sway_session_lock *lock) {
+	if (lock->cover_timer) {
+		wl_event_source_remove(lock->cover_timer);
+		lock->cover_timer = NULL;
+	}
+	if (!lock->locked_sent && lock->lock) {
+		lock->locked_sent = true;
+		wlr_session_lock_v1_send_locked(lock->lock);
+	}
+}
+
+// Send `locked` once every output shows either the lock surface or the backdrop.
+static void lock_check_covered(struct sway_session_lock *lock) {
+	if (lock->locked_sent) {
+		return;
+	}
+	struct sway_session_lock_output *output;
+	wl_list_for_each(output, &lock->outputs, link) {
+		if (!lock_output_covered(output)) {
+			return;
+		}
+	}
+	lock_finish_covering(lock);
+}
+
+static int handle_cover_timeout(void *data) {
+	struct sway_session_lock *lock = data;
+	sway_log(SWAY_DEBUG, "lock client slow to draw, blanking uncovered outputs");
+	lock->cover_timer = NULL;
+	struct sway_session_lock_output *output;
+	wl_list_for_each(output, &lock->outputs, link) {
+		if (!lock_output_covered(output)) {
+			wlr_scene_node_set_enabled(&output->background->node, true);
+		}
+	}
+	lock_finish_covering(lock);
+	return 0;
+}
+
 static void handle_surface_map(struct wl_listener *listener, void *data) {
 	struct sway_session_lock_output *surf = wl_container_of(listener, surf, surface_map);
 	if (surf->lock->focused == NULL) {
@@ -70,6 +120,7 @@ static void handle_surface_map(struct wl_listener *listener, void *data) {
 	// instead of the black backdrop.
 	wlr_scene_node_set_enabled(&surf->background->node, false);
 	cursor_rebase_all();
+	lock_check_covered(surf->lock);
 }
 
 static void handle_surface_unmap(struct wl_listener *listener, void *data) {
@@ -154,7 +205,9 @@ static void sway_session_lock_output_destroy(struct sway_session_lock_output *ou
 	wl_list_remove(&output->destroy.link);
 	wl_list_remove(&output->link);
 
+	struct sway_session_lock *lock = output->lock;
 	free(output);
+	lock_check_covered(lock);
 }
 
 static void lock_node_handle_destroy(struct wl_listener *listener, void *data) {
@@ -191,6 +244,11 @@ static struct sway_session_lock_output *session_lock_output_create(
 		return NULL;
 	}
 
+	// While a fresh lock waits for its client to draw, keep showing the last
+	// frame instead of flashing black (see LOCK_COVER_TIMEOUT_MS). Outputs
+	// added after that start black, as do abandoned locks.
+	wlr_scene_node_set_enabled(&background->node, lock->abandoned || lock->locked_sent);
+
 	lock_output->output = output;
 	lock_output->tree = tree;
 	lock_output->background = background;
@@ -207,6 +265,11 @@ static struct sway_session_lock_output *session_lock_output_create(
 }
 
 static void sway_session_lock_destroy(struct sway_session_lock* lock) {
+	if (lock->cover_timer) {
+		wl_event_source_remove(lock->cover_timer);
+		lock->cover_timer = NULL;
+	}
+	lock->locked_sent = true; // nothing left to cover
 	struct sway_session_lock_output *lock_output, *tmp_lock_output;
 	wl_list_for_each_safe(lock_output, tmp_lock_output, &lock->outputs, link) {
 		// destroying the node will also destroy the whole lock output
@@ -266,6 +329,8 @@ static void handle_abandon(struct wl_listener *listener, void *data) {
 	}
 
 	lock->abandoned = true;
+	lock->lock = NULL;
+	lock_finish_covering(lock); // just stops the timer: there's no lock to send `locked` on
 	wl_list_remove(&lock->destroy.link);
 	wl_list_remove(&lock->unlock.link);
 	wl_list_remove(&lock->new_surface.link);
@@ -294,6 +359,7 @@ static void handle_session_lock(struct wl_listener *listener, void *data) {
 	}
 
 	wl_list_init(&sway_lock->outputs);
+	sway_lock->lock = lock;
 
 	sway_log(SWAY_DEBUG, "session locked");
 
@@ -314,8 +380,18 @@ static void handle_session_lock(struct wl_listener *listener, void *data) {
 	sway_lock->destroy.notify = handle_abandon;
 	wl_signal_add(&lock->events.destroy, &sway_lock->destroy);
 
-	wlr_session_lock_v1_send_locked(lock);
 	server.session_lock.lock = sway_lock;
+
+	// `locked` goes out once every output shows the lock surface (or, after
+	// the timeout, black); until then they keep their last frame.
+	sway_lock->cover_timer = wl_event_loop_add_timer(server.wl_event_loop,
+		handle_cover_timeout, sway_lock);
+	if (sway_lock->cover_timer) {
+		wl_event_source_timer_update(sway_lock->cover_timer, LOCK_COVER_TIMEOUT_MS);
+	} else {
+		handle_cover_timeout(sway_lock);
+	}
+	lock_check_covered(sway_lock); // no outputs at all
 
 	// The lock screen covers everything, so check if any active inhibition got
 	// deactivated due to lost visibility.

@@ -12,9 +12,14 @@
 struct sway_transaction;
 
 struct sway_session_lock {
-	struct wlr_session_lock_v1 *lock;
+	struct wlr_session_lock_v1 *lock; // NULL once abandoned
 	struct wlr_surface *focused;
 	bool abandoned;
+	// The black backdrop stays hidden (the last frame stays up) until the
+	// client's lock surface maps or the timer runs out; `locked` is only sent
+	// once every output is covered by one or the other.
+	bool locked_sent;
+	struct wl_event_source *cover_timer;
 
 	struct wl_list outputs; // struct sway_session_lock_output
 
